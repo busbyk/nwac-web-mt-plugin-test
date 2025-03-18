@@ -16,6 +16,10 @@ import { Header } from './Header/config'
 import { plugins } from './plugins'
 import { defaultLexical } from '@/fields/defaultLexical'
 import { getServerSideURL } from './utilities/getURL'
+import { Tenants } from './collections/Tenants'
+import { Roles } from './collections/Roles'
+import { RoleAssignments } from './collections/RoleAssignments'
+import { GlobalRoleAssignments } from './collections/GlobalRoleAssignments'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -64,7 +68,17 @@ export default buildConfig({
       url: process.env.DATABASE_URI || '',
     },
   }),
-  collections: [Pages, Posts, Media, Categories, Users],
+  collections: [
+    Pages,
+    Posts,
+    Media,
+    Categories,
+    Users,
+    Tenants,
+    Roles,
+    RoleAssignments,
+    GlobalRoleAssignments,
+  ],
   cors: [getServerSideURL()].filter(Boolean),
   globals: [Header, Footer],
   plugins: [

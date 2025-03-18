@@ -1,4 +1,12 @@
-import type { CollectionSlug, GlobalSlug, Payload, PayloadRequest, File } from 'payload'
+import type {
+  CollectionSlug,
+  GlobalSlug,
+  Payload,
+  PayloadRequest,
+  File,
+  RequiredDataFromCollectionSlug,
+  User,
+} from 'payload'
 
 import { contactForm as contactFormData } from './contact-form'
 import { contact as contactPageData } from './contact-page'
@@ -9,6 +17,7 @@ import { imageHero1 } from './image-hero-1'
 import { post1 } from './post-1'
 import { post2 } from './post-2'
 import { post3 } from './post-3'
+import { Role, Tenant } from '@/payload-types'
 
 const collections: CollectionSlug[] = [
   'categories',
@@ -18,6 +27,10 @@ const collections: CollectionSlug[] = [
   'forms',
   'form-submissions',
   'search',
+  'roles',
+  'roleAssignments',
+  'globalRoleAssignments',
+  'tenants',
 ]
 const globals: GlobalSlug[] = ['header', 'footer']
 
@@ -66,17 +79,192 @@ export const seed = async ({
       .map((collection) => payload.db.deleteVersions({ collection, req, where: {} })),
   )
 
-  payload.logger.info(`— Seeding demo author and user...`)
+  payload.logger.info(`— Seeding roles...`)
 
-  await payload.delete({
-    collection: 'users',
-    depth: 0,
-    where: {
-      email: {
-        equals: 'demo-author@example.com',
-      },
+  const roleData: RequiredDataFromCollectionSlug<'roles'>[] = [
+    {
+      name: 'Admin',
+      rules: [
+        {
+          collections: ['*'],
+          actions: ['*'],
+        },
+      ],
     },
-  })
+    {
+      name: 'User Administrator',
+      rules: [
+        {
+          collections: ['roleAssignments'],
+          actions: ['create', 'update'],
+        },
+      ],
+    },
+    {
+      name: 'Contributor',
+      rules: [
+        {
+          collections: ['posts', 'pages', 'categories', 'media'],
+          actions: ['create', 'update'],
+        },
+      ],
+    },
+    {
+      name: 'Viewer',
+      rules: [
+        {
+          collections: ['*'],
+          actions: ['read'],
+        },
+      ],
+    },
+  ]
+  const roles: Record<string, Role> = {}
+  for (const data of roleData) {
+    payload.logger.info(`Creating ${data.name} role...`)
+    const role = await payload
+      .create({
+        collection: 'roles',
+        data: data,
+      })
+      .catch((e) => payload.logger.error(e))
+
+    if (!role) {
+      payload.logger.error(`Creating ${data.name} role returned null...`)
+      return
+    }
+    roles[data.name] = role
+  }
+
+  payload.logger.info(`— Seeding tenants...`)
+
+  const tenantData: RequiredDataFromCollectionSlug<'tenants'>[] = [
+    {
+      name: 'Northwest Avalanche Center',
+      slug: 'nwac',
+      domains: [{ domain: 'nwac.us' }],
+    },
+    {
+      name: 'Sierra Avalanche Center',
+      slug: 'sac',
+      domains: [{ domain: 'sierraavalanchecenter.org' }],
+    },
+  ]
+  const tenants: Record<string, Tenant> = {}
+  for (const data of tenantData) {
+    payload.logger.info(`Creating ${data.name} tenant returned...`)
+    const tenant = await payload
+      .create({
+        collection: 'tenants',
+        data: data,
+      })
+      .catch((e) => payload.logger.error(e))
+
+    if (!tenant) {
+      payload.logger.error(`Creating ${data.name} tenant returned null...`)
+      return
+    }
+    tenants[data.slug] = tenant
+  }
+  payload.logger.info(`— Seeding users...`)
+
+  const userData: RequiredDataFromCollectionSlug<'users'>[] = [
+    {
+      name: 'Super Admin',
+      email: 'admin@avy.com',
+      password: 'password',
+    },
+    ...Object.values(tenants)
+      .map((tenant): RequiredDataFromCollectionSlug<'users'>[] => [
+        {
+          name: tenant.slug.toUpperCase() + ' Admin',
+          email: 'admin@' + (tenant.domains as NonNullable<Tenant['domains']>)[0].domain,
+          password: 'password',
+        },
+        {
+          name: tenant.slug.toUpperCase() + ' Contributor',
+          email: 'contributor@' + (tenant.domains as NonNullable<Tenant['domains']>)[0].domain,
+          password: 'password',
+        },
+        {
+          name: tenant.slug.toUpperCase() + ' Viewer',
+          email: 'viewer@' + (tenant.domains as NonNullable<Tenant['domains']>)[0].domain,
+          password: 'password',
+        },
+      ])
+      .flat(),
+  ]
+  const users: Record<string, User> = {}
+  for (const data of userData) {
+    payload.logger.info(`Creating ${data.name} user...`)
+    const user = await payload
+      .create({
+        collection: 'users',
+        data: data,
+      })
+      .catch((e) => payload.logger.error(e))
+
+    if (!user) {
+      payload.logger.error(`Creating ${data.name} user returned null...`)
+      return
+    }
+    users[data.name] = user
+  }
+
+  payload.logger.info(`— Seeding global role assignments...`)
+
+  const _superAdminRoleAssignment = await payload
+    .create({
+      collection: 'globalRoleAssignments',
+      data: {
+        roles: [roles['Admin']],
+        user: users['Super Admin'],
+      },
+    })
+    .catch((e) => payload.logger.error(e))
+
+  payload.logger.info(`— Seeding tenant role assignments...`)
+
+  const roleAssignmentData: RequiredDataFromCollectionSlug<'roleAssignments'>[] = [
+    ...Object.values(tenants)
+      .map((tenant): RequiredDataFromCollectionSlug<'roleAssignments'>[] => [
+        {
+          tenant: tenant,
+          roles: [roles['Admin']],
+          user: users[tenant.slug.toUpperCase() + ' Admin'],
+        },
+        {
+          tenant: tenant,
+          roles: [roles['Contributor']],
+          user: users[tenant.slug.toUpperCase() + ' Contributor'],
+        },
+
+        {
+          tenant: tenant,
+          roles: [roles['Viewer']],
+          user: users[tenant.slug.toUpperCase() + ' Viewer'],
+        },
+      ])
+      .flat(),
+  ]
+  for (const data of roleAssignmentData) {
+    payload.logger.info(
+      `Assigning ${(data.user as User).name} role ${(data.roles as Role[])[0].name} in ${(data.tenant as Tenant).name}...`,
+    )
+    const roleAssignment = await payload
+      .create({
+        collection: 'roleAssignments',
+        data: data,
+      })
+      .catch((e) => payload.logger.error(e))
+
+    if (!roleAssignment) {
+      payload.logger.error(
+        `Assigning ${(data.user as User).name} role ${(data.roles as Role[])[0].name} in ${(data.tenant as Tenant).name} returned null...`,
+      )
+      return
+    }
+  }
 
   payload.logger.info(`— Seeding media...`)
 

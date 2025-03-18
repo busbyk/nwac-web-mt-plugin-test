@@ -4,6 +4,7 @@ import { nestedDocsPlugin } from '@payloadcms/plugin-nested-docs'
 import { redirectsPlugin } from '@payloadcms/plugin-redirects'
 import { seoPlugin } from '@payloadcms/plugin-seo'
 import { searchPlugin } from '@payloadcms/plugin-search'
+import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
 import { Plugin } from 'payload'
 import { revalidateRedirects } from '@/hooks/revalidateRedirects'
 import { GenerateTitle, GenerateURL } from '@payloadcms/plugin-seo/types'
@@ -11,7 +12,7 @@ import { FixedToolbarFeature, HeadingFeature, lexicalEditor } from '@payloadcms/
 import { searchFields } from '@/search/fieldOverrides'
 import { beforeSyncWithSearch } from '@/search/beforeSync'
 
-import { Page, Post } from '@/payload-types'
+import { Config, Page, Post } from '@/payload-types'
 import { getServerSideURL } from '@/utilities/getURL'
 
 const generateTitle: GenerateTitle<Post | Page> = ({ doc }) => {
@@ -91,4 +92,19 @@ export const plugins: Plugin[] = [
     },
   }),
   payloadCloudPlugin(),
+  multiTenantPlugin<Config>({
+    collections: {
+      pages: {},
+    },
+    tenantField: {
+      access: {
+        read: () => true,
+        update: () => true,
+      },
+    },
+    tenantsArrayField: {
+      includeDefaultField: false,
+    },
+    userHasAccessToAllTenants: (user) => true,
+  }),
 ]
